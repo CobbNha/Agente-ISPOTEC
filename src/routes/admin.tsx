@@ -48,9 +48,12 @@ export default function AdminRoute() {
         supabase.from('documentos').select('*').order('created_at', { ascending: false }),
         supabase.from('categorias').select('nome').order('nome'),
       ])
+      if (docsRes.error) throw new Error(`Documentos: ${docsRes.error.message}`)
+      if (catsRes.error) throw new Error(`Categorias: ${catsRes.error.message}`)
       if (docsRes.data) setDocuments(docsRes.data as Document[])
       if (catsRes.data) setCategories(catsRes.data.map(c => c.nome))
-      
+      setAccessError('')
+
       if (docsRes.data) {
         setStats({
           totalDocs: docsRes.data.length,
