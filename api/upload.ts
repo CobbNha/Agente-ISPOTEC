@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js'
 import { PDFParse } from 'pdf-parse'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { mkdtemp, writeFile, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+const execFileAsync = promisify(execFile)
 
 export const config = { runtime: 'nodejs' }
 export default async function handler(request: Request): Promise<Response> {
@@ -38,15 +45,47 @@ export default async function handler(request: Request): Promise<Response> {
   if (!role) return Response.json({ error: 'Apenas administradores podem carregar documentos.' }, { status: 403 })
 
   let text = ''
-  if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
-    const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
+  const fileName = file.name.toLowerCase()
+  const fileBytes = Buffer.from(await file.arrayBuffer())
+
+  if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
+    const parser = new PDFParse({ data: fileBytes })
     const parsed = await parser.getText()
     text = parsed.text
     await parser.destroy()
+  } else if (fileName.endsWith('.docx')) {
+    const tempDir = await mkdtemp(join(tmpdir(), 'ispotec-upload-'))
+    const tempPath = join(tempDir, file.name.replace(/[^a-zA-Z0-9._-]/g, '_'))
+    try {
+      await writeFile(tempPath, fileBytes)
+      const { stdout } = await execFileAsync('unzip', ['-p', tempPath, 'word/document.xml'], { maxBuffer: 20 * 1024 * 1024 })
+      text = stdout
+        .replace(/<w:tab\s*\/?>/g, '\\t')
+        .replace(/<w:br\s*\/?>/g, '\\n')
+        .replace(/<\\/w:p>/g, '\\n\\n')
+        .replace(/<[^>]+>/g, '')
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/\\n{3,}/g, '\\n\\n')
+        .trim()
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
+  } else if (fileName.endsWith('.doc')) {
+    const tempDir = await mkdtemp(join(tmpdir(), 'ispotec-upload-'))
+    const tempPath = join(tempDir, file.name.replace(/[^a-zA-Z0-9._-]/g, '_'))
+    try {
+      await writeFile(tempPath, fileBytes)
+      const { stdout } = await execFileAsync('antiword', [tempPath], { maxBuffer: 20 * 1024 * 1024 })
+      text = stdout
+    } catch {
+      return Response.json({ error: 'O formato .doc antigo não pôde ser lido neste servidor. Guarde o ficheiro como .docx ou PDF e tente novamente.' }, { status: 400 })
+    } finally {
+      await rm(tempDir, { recursive: true, force: true })
+    }
   } else {
-    text = await file.text()
+    text = new TextDecoder().decode(fileBytes)
   }
-  if (!text.trim()) return Response.json({ error: 'Não foi possível extrair texto deste ficheiro.' }, { status: 400 })
+  if (!text.trim()) return Response.json({ error: 'Não foi possível extrair texto deste ficheiro. Para documentos digitalizados, use um PDF com texto selecionável.' }, { status: 400 })
 
   const { data: cat, error: categoryError } = await supabase.from('categorias').upsert({ nome: category }, { onConflict: 'nome' }).select('id').single()
   if (categoryError) return Response.json({ error: `Não foi possível guardar a categoria: ${categoryError.message}` }, { status: 500 })
