@@ -18,8 +18,10 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0]
     if (selectedFile) {
-      if (selectedFile.type !== 'application/pdf' && !selectedFile.type.includes('text')) {
-        setError('Apenas ficheiros PDF e texto são permitidos')
+      const extension = selectedFile.name.toLowerCase().split('.').pop()
+      const supportedExtensions = ['pdf', 'txt', 'text', 'md', 'csv', 'doc', 'docx']
+      if (!extension || !supportedExtensions.includes(extension)) {
+        setError('Formatos permitidos: PDF, Word (.doc/.docx), TXT, MD e CSV')
         setFile(null)
         return
       }
@@ -81,7 +83,7 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
       </div>
 
       <div style={styles.section}>
-        <label style={styles.label}>Ficheiro (PDF ou TXT)</label>
+        <label style={styles.label}>Ficheiro (PDF, Word ou texto)</label>
         <div
           style={{
             ...styles.dropZone,
@@ -107,7 +109,7 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
             ref={fileInputRef}
             type="file"
             onChange={handleFileChange}
-            accept=".pdf,.txt,.text"
+            accept=".pdf,.doc,.docx,.txt,.text,.md,.csv"
             style={{ display: 'none' }}
             disabled={loading}
           />
@@ -135,7 +137,7 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
             <div style={styles.uploadPrompt}>
               <Upload size={24} color="#94a3b8" />
               <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Arraste o ficheiro aqui</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>ou clique para selecionar</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>PDF, Word (.doc/.docx), TXT, MD ou CSV até 10MB</div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
