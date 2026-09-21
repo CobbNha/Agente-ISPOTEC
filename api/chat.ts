@@ -26,6 +26,7 @@ export default async function handler(request: Request): Promise<Response> {
     return Response.json({ error: 'A integração com a Groq ainda não está configurada.' }, { status: 503 })
   }
 
+  const context = await loadKnowledge(question)
   const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -39,7 +40,7 @@ export default async function handler(request: Request): Promise<Response> {
       messages: [
         {
           role: 'system',
-          content: 'És o assistente institucional do ISPOTEC. Responde em português de Angola, com clareza e tom profissional. Não inventes regulamentos, prazos, valores ou procedimentos. Quando não tiveres informação oficial suficiente, diz explicitamente que a Secretaria deve confirmar. Não peças nem exponhas dados pessoais. O utilizador está no perfil indicado.',
+          content: `És o assistente institucional do ISPOTEC. Responde em português de Moçambique, com clareza e tom profissional. Usa exclusivamente a base oficial abaixo. Não inventes regulamentos, prazos, valores ou procedimentos. Se a base não responder à pergunta, diz: "Não encontrei essa informação na base oficial do ISPOTEC. Confirme com a Secretaria Académica." Não uses conhecimento geral para preencher lacunas. Organiza a resposta com título curto, pontos objetivos e uma nota de confirmação quando necessário. Perfil: ${profile}\n\nBASE OFICIAL:\n${context}`,
         },
         { role: 'user', content: `Perfil: ${profile}\nPergunta: ${question}` },
       ],
@@ -57,6 +58,31 @@ export default async function handler(request: Request): Promise<Response> {
   }
 
   return Response.json({ answer })
+}
+
+async function loadKnowledge(question: string) {
+  const url = process.env.SUPABASE_URL
+  const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !key) return 'Base de conhecimento indisponível.'
+
+  const supabase = (await import('@supabase/supabase-js')).createClient(url, key)
+  const { data } = await supabase
+    .from('partes_documento')
+    .select('conteudo, ordem, documentos!inner(titulo, status, acesso)')
+    .eq('documentos.status', 'ready')
+    .eq('documentos.acesso', 'public')
+    .limit(200)
+
+  const terms = question.toLowerCase().split(/\\W+/).filter((term) => term.length > 2)
+  const ranked = (data || []).map((part: any) => {
+    const text = String(part.conteudo || '')
+    const score = terms.reduce((total, term) => total + (text.toLowerCase().includes(term) ? 1 : 0), 0)
+    return { ...part, score }
+  }).filter((part: any) => part.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 8)
+
+  return ranked.length
+    ? ranked.map((part: any, index: number) => `[${index + 1}] ${part.documentos.titulo}\n${part.conteudo}`).join('\n\n')
+    : 'Nenhum trecho relevante encontrado.'
 }
 
 export const config = { runtime: 'edge' }
