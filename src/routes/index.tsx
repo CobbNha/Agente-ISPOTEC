@@ -1,6 +1,4 @@
 import * as React from 'react'
-import { createSupabaseBrowserClient } from '../lib/supabase/client'
-
 const profiles = ['Estudante', 'Docente', 'DAF', 'Secretaria', 'Direcção Pedagógica']
 const suggestions = ['Como faço a matrícula?', 'Quais são os documentos necessários?', 'Onde consulto o calendário académico?']
 
@@ -15,18 +13,27 @@ export default function IndexRoute() {
   async function ask(value = question) {
     const prompt = value.trim()
     if (!prompt || loading) return
-    const supabase = createSupabaseBrowserClient()
     setQuestion('')
     setMessages((current) => [...current, { role: 'user', text: prompt }])
     setLoading(true)
-    const { data } = await supabase.from('documentos').select('titulo').eq('acesso', 'public').eq('status', 'ready').limit(1)
-    await new Promise((resolve) => setTimeout(resolve, 650))
-    setMessages((current) => [...current, {
-      role: 'assistant',
-      text: data?.length ? 'Estou a consultar a base de conhecimento oficial do ISPOTEC. Esta resposta será baseada apenas nos documentos publicados pela instituição. Para uma resposta completa, carregue os regulamentos e FAQs no painel de administração.' : 'Ainda não existem documentos públicos processados na base de conhecimento. O administrador deve carregar os regulamentos, FAQs e procedimentos oficiais antes de eu responder.',
-      source: data?.[0]?.titulo,
-    }])
-    setLoading(false)
+
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: prompt, profile }),
+      })
+      const result = await response.json().catch(() => null) as { answer?: string; error?: string } | null
+      if (!response.ok || !result?.answer) throw new Error(result?.error || 'O endpoint do agente não está disponível neste ambiente. Publique o projeto na Vercel para ativar a função Groq.')
+      setMessages((current) => [...current, { role: 'assistant', text: result.answer! }])
+    } catch (error) {
+      setMessages((current) => [...current, {
+        role: 'assistant',
+        text: error instanceof Error ? error.message : 'Ocorreu um erro ao consultar o assistente. Tente novamente.',
+      }])
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
