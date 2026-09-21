@@ -10,6 +10,24 @@ export default async function handler(request: Request): Promise<Response> {
   const category = String(form.get('category') || 'Geral').trim()
   if (!(file instanceof File) || !title) return Response.json({ error: 'Título e ficheiro são obrigatórios.' }, { status: 400 })
   if (file.size > 10 * 1024 * 1024) return Response.json({ error: 'O ficheiro excede o limite de 10MB.' }, { status: 400 })
+
+  const authorization = request.headers.get('authorization')
+  if (!authorization?.startsWith('Bearer ')) return Response.json({ error: 'Sessão necessária.' }, { status: 401 })
+
+  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
+    global: { headers: { Authorization: authorization } },
+  })
+  const { data: userData, error: userError } = await supabase.auth.getUser()
+  if (userError || !userData.user) return Response.json({ error: 'Sessão inválida.' }, { status: 401 })
+
+  const { data: role } = await supabase
+    .from('funcoes_utilizador')
+    .select('funcao')
+    .eq('user_id', userData.user.id)
+    .eq('funcao', 'admin')
+    .maybeSingle()
+  if (!role) return Response.json({ error: 'Apenas administradores podem carregar documentos.' }, { status: 403 })
+
   let text = ''
   if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
     const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
@@ -21,7 +39,6 @@ export default async function handler(request: Request): Promise<Response> {
   }
   if (!text.trim()) return Response.json({ error: 'Não foi possível extrair texto deste ficheiro.' }, { status: 400 })
 
-  const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!)
   const { data: cat } = await supabase.from('categorias').upsert({ nome: category }, { onConflict: 'nome' }).select('id').single()
   const { data: doc, error } = await supabase.from('documentos').insert({ titulo: title, categoria_id: cat?.id, origem: file.name, acesso: 'public', status: 'processing', storage_path: `documents/${Date.now()}-${file.name}` }).select('id').single()
   if (error || !doc) return Response.json({ error: 'Não foi possível criar o documento.' }, { status: 500 })

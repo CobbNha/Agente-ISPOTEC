@@ -27,6 +27,7 @@ export default function AdminRoute() {
   const [editingDoc, setEditingDoc] = React.useState<Document | null>(null)
   const [statsLoading, setStatsLoading] = React.useState(false)
   const [stats, setStats] = React.useState({ totalDocs: 0, totalChunks: 0, readyDocs: 0 })
+  const [accessError, setAccessError] = React.useState('')
 
   React.useEffect(() => {
     requireAdmin().then((user) => {
@@ -34,6 +35,9 @@ export default function AdminRoute() {
         setUserEmail(user.email ?? '')
         loadData()
       }
+      setChecking(false)
+    }).catch((error) => {
+      setAccessError(error instanceof Error ? error.message : 'Não foi possível validar o acesso.')
       setChecking(false)
     })
   }, [])
@@ -60,14 +64,23 @@ export default function AdminRoute() {
   }
 
   async function handleUpload(file: File, title: string, category: string) {
+    const { data: sessionData } = await supabase.auth.getSession()
+    const accessToken = sessionData.session?.access_token
+    if (!accessToken) throw new Error('A sessão expirou. Entre novamente.')
+
     const formData = new FormData()
     formData.append('file', file)
     formData.append('title', title)
     formData.append('category', category)
-    
-    const response = await fetch('/api/upload', { method: 'POST', body: formData })
-    if (!response.ok) throw new Error('Erro no upload')
-    
+
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      body: formData,
+    })
+    const result = await response.json().catch(() => null)
+    if (!response.ok) throw new Error(result?.error || 'Erro no upload')
+
     await loadData()
   }
 
@@ -87,6 +100,13 @@ export default function AdminRoute() {
   }
 
   if (checking) return <main style={{ padding: 32, fontFamily: 'Inter, sans-serif' }}>A verificar acesso...</main>
+  if (accessError) return (
+    <main style={{ padding: 32, fontFamily: 'Inter, sans-serif', maxWidth: 560, margin: '0 auto' }}>
+      <h1 style={{ color: '#0f172a' }}>Acesso ao painel</h1>
+      <p style={{ color: '#64748b' }}>{accessError}</p>
+      <button onClick={() => { window.location.href = '/login' }} style={styles.signOutBtn}>Voltar ao login</button>
+    </main>
+  )
 
   return (
     <main style={styles.page}>
