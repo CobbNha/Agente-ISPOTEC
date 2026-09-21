@@ -1,14 +1,20 @@
 import * as React from 'react'
-const profiles = ['Estudante', 'Docente', 'DAF', 'Secretaria', 'Direcção Pedagógica']
-const suggestions = ['Como faço a matrícula?', 'Quais são os documentos necessários?', 'Onde consulto o calendário académico?']
 
-type Message = { role: 'user' | 'assistant'; text: string; source?: string }
+const profiles = ['Estudante', 'Docente', 'DAF', 'Secretaria', 'Direcção Pedagógica']
+const suggestions = ['Como faço a matrícula?', 'Quais são os documentos necessários?', 'Qual é a data-limite de pagamento?']
+
+type Message = { role: 'user' | 'assistant'; text: string; citations?: string[] }
 
 export default function IndexRoute() {
   const [profile, setProfile] = React.useState('Estudante')
   const [question, setQuestion] = React.useState('')
   const [messages, setMessages] = React.useState<Message[]>([])
   const [loading, setLoading] = React.useState(false)
+  const messagesEndRef = React.useRef<HTMLDivElement>(null)
+
+  React.useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   async function ask(value = question) {
     const prompt = value.trim()
@@ -23,13 +29,13 @@ export default function IndexRoute() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: prompt, profile }),
       })
-      const result = await response.json().catch(() => null) as { answer?: string; error?: string } | null
-      if (!response.ok || !result?.answer) throw new Error(result?.error || 'O endpoint do agente não está disponível neste ambiente. Publique o projeto na Vercel para ativar a função Groq.')
-      setMessages((current) => [...current, { role: 'assistant', text: result.answer! }])
+      const result = await response.json().catch(() => null) as { answer?: string; citations?: string[]; error?: string } | null
+      if (!response.ok || !result?.answer) throw new Error(result?.error || 'O agente não está disponível. Tente mais tarde.')
+      setMessages((current) => [...current, { role: 'assistant', text: result.answer!, citations: result.citations }])
     } catch (error) {
       setMessages((current) => [...current, {
         role: 'assistant',
-        text: error instanceof Error ? error.message : 'Ocorreu um erro ao consultar o assistente. Tente novamente.',
+        text: error instanceof Error ? error.message : 'Ocorreu um erro. Tente novamente.',
       }])
     } finally {
       setLoading(false)
@@ -38,29 +44,163 @@ export default function IndexRoute() {
 
   return (
     <main style={styles.page}>
-      <div style={styles.glow} />
       <header style={styles.header}>
-        <a href="/" style={styles.brand}><img src="/ispotec-logo.png" alt="Logotipo do Instituto Superior Politécnico e de Tecnologias" style={styles.logoImage} /><span><strong>ISPOTEC</strong><small> AI INSTITUCIONAL</small></span></a>
-        <nav style={styles.nav}><span style={styles.status}><i /> Sistema online</span><a href="/admin" style={styles.adminLink}>Área administrativa →</a></nav>
+        <div style={styles.headerContent}>
+          <a href="/" style={styles.brand}>
+            <img src="/ispotec-logo.png" alt="ISPOTEC" style={styles.logoImage} />
+            <div>
+              <div style={styles.brandName}>ISPOTEC</div>
+              <div style={styles.brandSubtext}>Assistente Institucional</div>
+            </div>
+          </a>
+          <nav style={styles.nav}>
+            <span style={styles.status}>🟢 Sistema online</span>
+            <a href="/admin" style={styles.adminLink}>Administração</a>
+          </nav>
+        </div>
       </header>
-      <section style={styles.hero}>
-        <div style={styles.eyebrow}>ASSISTENTE INSTITUCIONAL</div>
-        <h1 style={styles.h1}>Informação oficial,<br /><em style={styles.em}>sem complicação.</em></h1>
-        <p style={styles.p}>Faça perguntas sobre matrículas, regulamentos, pagamentos e vida académica. Eu respondo apenas com base na documentação oficial do ISPOTEC.</p>
-      </section>
-      <section style={styles.chatCard}>
-        <div style={styles.chatTop}><div><strong>Como posso ajudar?</strong><span style={{ display: 'block', marginTop: 6, color: '#687185', fontSize: 13 }}>Escolha o seu perfil para uma resposta mais contextualizada.</span></div><div style={styles.live}>● AO VIVO</div></div>
-        <div style={styles.profileRow}><span style={styles.label}>O seu perfil</span>{profiles.map((item) => <button key={item} onClick={() => setProfile(item)} style={{ ...styles.profile, ...(profile === item ? styles.profileActive : {}) }}>{item}</button>)}</div>
-        {messages.length > 0 && <div style={styles.messages}>{messages.map((message, index) => <div key={index} style={{ ...styles.message, ...(message.role === 'user' ? styles.userMessage : {}) }}><span style={styles.avatar}>{message.role === 'user' ? 'EU' : 'AI'}</span><div><strong>{message.role === 'user' ? profile : 'ISPOTEC AI'}</strong><p>{message.text}</p>{message.source && <small>Fonte: {message.source}</small>}</div></div>)}{loading && <div style={styles.message}><span style={styles.avatar}>AI</span><div><strong>ISPOTEC AI</strong><p style={{ color: '#8a8f9f' }}>A consultar documentos oficiais<span className="dots">...</span></p></div></div>}</div>}
-        <div style={styles.composer}><textarea value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && event.keyCode !== 229) { event.preventDefault(); void ask() } }} placeholder="Escreva a sua pergunta..." rows={2} /><button onClick={() => void ask()} disabled={loading || !question.trim()} style={styles.send}>{loading ? '...' : 'Enviar'} <span>↗</span></button></div>
-        <div style={styles.suggestions}><span>SUGESTÕES</span>{suggestions.map((item) => <button key={item} onClick={() => void ask(item)}>{item}</button>)}</div>
-      </section>
-      <footer style={styles.footer}><span>Respostas baseadas em documentação oficial</span><span>Não partilhe dados pessoais, notas ou dívidas.</span></footer>
+
+      <div style={styles.container}>
+        {messages.length === 0 ? (
+          <section style={styles.hero}>
+            <div style={styles.eyebrow}>Bem-vindo ao ISPOTEC</div>
+            <h1 style={styles.h1}>Respostas claras<br />baseadas em documentação<br /><em>oficial</em></h1>
+            <p style={styles.p}>Faça perguntas sobre matrículas, regulamentos, calendário académico e procedimentos administrativos. O assistente consulta apenas documentação verificada.</p>
+          </section>
+        ) : null}
+
+        <section style={styles.chatSection}>
+          <div style={styles.chatContainer}>
+            {messages.length === 0 && (
+              <div style={styles.profileSelector}>
+                <div style={styles.profileLabel}>Escolha o seu perfil para respostas contextualizadas:</div>
+                <div style={styles.profileButtons}>
+                  {profiles.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => setProfile(p)}
+                      style={{ ...styles.profileBtn, ...(profile === p ? styles.profileBtnActive : {}) }}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {messages.length > 0 && (
+              <div style={styles.messages}>
+                {messages.map((msg, i) => (
+                  <div key={i} style={{ ...styles.messageWrapper, ...( msg.role === 'user' ? styles.userWrapper : {}) }}>
+                    <div style={{ ...styles.message, ...(msg.role === 'user' ? styles.userMessage : styles.assistantMessage) }}>
+                      <div style={styles.messageHeader}>
+                        <span style={styles.role}>{msg.role === 'user' ? profile : 'ISPOTEC AI'}</span>
+                      </div>
+                      <div style={styles.messageContent}>{msg.text}</div>
+                      {msg.citations && msg.citations.length > 0 && (
+                        <div style={styles.citations}>
+                          <div style={styles.citationLabel}>Fontes:</div>
+                          {msg.citations.map((cite, j) => (
+                            <div key={j} style={styles.citation}>{cite}</div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                {loading && (
+                  <div style={{ ...styles.messageWrapper }}>
+                    <div style={{ ...styles.message, ...styles.assistantMessage }}>
+                      <div style={styles.messageHeader}>
+                        <span style={styles.role}>ISPOTEC AI</span>
+                      </div>
+                      <div style={styles.loadingDots}>
+                        <span></span><span></span><span></span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+            )}
+
+            {messages.length === 0 && (
+              <div style={styles.suggestionsGrid}>
+                {suggestions.map((s) => (
+                  <button key={s} onClick={() => ask(s)} style={styles.suggestionCard}>
+                    <div style={styles.suggestionTitle}>{s}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={styles.composer}>
+            <textarea
+              value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  e.preventDefault()
+                  void ask()
+                }
+              }}
+              placeholder="Escreva a sua pergunta..."
+              style={styles.textarea}
+              rows={2}
+            />
+            <button onClick={() => ask()} disabled={loading || !question.trim()} style={{ ...styles.sendBtn, opacity: loading || !question.trim() ? 0.5 : 1 }}>
+              {loading ? '⏳' : '✓'} Enviar
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <footer style={styles.footer}>
+        <div style={styles.footerContent}>
+          <p style={styles.footerText}>Respostas baseadas em documentação oficial do ISPOTEC</p>
+          <p style={styles.footerWarning}>Não partilhe dados pessoais ou informações financeiras</p>
+        </div>
+      </footer>
+
+      <style>{`
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+      `}</style>
     </main>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  headerContent: { width: '100%', maxWidth: 1120, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  brandName: { fontSize: 15, fontWeight: 800, letterSpacing: '.08em' },
+  brandSubtext: { fontSize: 11, color: '#94a3b8', marginTop: 3, letterSpacing: 0 },
+  container: { width: '100%', maxWidth: 1120, margin: '0 auto' },
+  chatSection: { maxWidth: 900, marginBottom: 48, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 16, boxShadow: '0 12px 40px rgba(15,23,42,.06)', overflow: 'hidden' },
+  chatContainer: { minHeight: 190 },
+  profileSelector: { padding: '22px 28px 8px' },
+  profileLabel: { fontSize: 12, color: '#64748b', marginBottom: 12 },
+  profileButtons: { display: 'flex', gap: 8, flexWrap: 'wrap' },
+  profileBtn: { border: '1px solid #e2e8f0', background: '#fff', borderRadius: 20, padding: '8px 13px', color: '#64748b', cursor: 'pointer', fontSize: 12 },
+  profileBtnActive: { background: '#0f172a', color: '#fff', borderColor: '#0f172a' },
+  suggestionsGrid: { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '26px 28px' },
+  suggestionCard: { textAlign: 'left', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 9, padding: 14, cursor: 'pointer', color: '#334155' },
+  suggestionTitle: { fontSize: 12, lineHeight: 1.5 },
+  messageWrapper: { display: 'flex', padding: '14px 28px' },
+  userWrapper: { justifyContent: 'flex-end' },
+  assistantMessage: { background: '#f8fafc' },
+  messageHeader: { marginBottom: 7 },
+  role: { fontSize: 11, fontWeight: 800, color: '#475569', letterSpacing: '.04em' },
+  messageContent: { whiteSpace: 'pre-wrap', lineHeight: 1.65, fontSize: 14, color: '#334155' },
+  citations: { borderTop: '1px solid #e2e8f0', marginTop: 12, paddingTop: 10, fontSize: 11, color: '#64748b' },
+  citationLabel: { fontWeight: 700, marginBottom: 4 },
+  citation: { marginTop: 3 },
+  loadingDots: { display: 'flex', gap: 5, padding: '8px 0' },
+  composer: { display: 'flex', gap: 10, padding: 20, borderTop: '1px solid #e2e8f0' },
+  sendBtn: { border: 0, background: '#0f172a', color: '#fff', borderRadius: 8, padding: '0 18px', fontWeight: 700, cursor: 'pointer' },
+  footerContent: { width: '100%', maxWidth: 1120, margin: '0 auto', display: 'flex', justifyContent: 'space-between', gap: 16 },
+  footerText: { margin: 0, fontSize: 12, color: '#64748b' },
+  footerWarning: { margin: 0, fontSize: 12, color: '#94a3b8' },
   page: { minHeight: '100vh', background: '#f7f8fb', color: '#14213d', fontFamily: "Inter, ui-sans-serif, system-ui, sans-serif", padding: '0 7vw', position: 'relative', overflow: 'hidden' },
   glow: { position: 'absolute', top: -260, right: -160, width: 600, height: 600, borderRadius: '50%', background: 'radial-gradient(circle, rgba(211,166,75,.17), transparent 67%)', pointerEvents: 'none' },
   header: { height: 82, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #e8eaf0', position: 'relative' },
