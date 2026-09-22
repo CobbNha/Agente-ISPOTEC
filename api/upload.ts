@@ -18,8 +18,6 @@ export default async function handler(request: Request): Promise<Response> {
   const title = String(form.get('title') || '').trim()
   const category = String(form.get('category') || 'Geral').trim()
   if (!(file instanceof File) || !title) return Response.json({ error: 'Título e ficheiro são obrigatórios.' }, { status: 400 })
-  if (file.size > 100 * 1024 * 1024) return Response.json({ error: 'O ficheiro excede o limite de 100MB.' }, { status: 413 })
-
   const authorization = request.headers.get('authorization')
   if (!authorization?.startsWith('Bearer ')) return Response.json({ error: 'Sessão necessária.' }, { status: 401 })
 
@@ -106,9 +104,19 @@ export default async function handler(request: Request): Promise<Response> {
     .map((part) => part.trim())
     .filter(Boolean)
     .flatMap((part) => part.match(/.{1,12000}(?:\s|$)/g) || [part])
-  const { error: chunksError } = chunks.length
-    ? await supabase.from('partes_documento').insert(chunks.map((conteudo, ordem) => ({ documento_id: doc.id, conteudo, ordem })))
-    : { error: null }
+  let chunksError: { message: string } | null = null
+  for (let start = 0; start < chunks.length; start += 100) {
+    const batch = chunks.slice(start, start + 100).map((conteudo, index) => ({
+      documento_id: doc.id,
+      conteudo,
+      ordem: start + index,
+    }))
+    const result = await supabase.from('partes_documento').insert(batch)
+    if (result.error) {
+      chunksError = result.error
+      break
+    }
+  }
   if (chunksError) {
     await supabase.from('documentos').update({ status: 'error', erro: chunksError.message }).eq('id', doc.id)
     return Response.json({ error: `Não foi possível indexar o conteúdo: ${chunksError.message}` }, { status: 500 })
