@@ -71,8 +71,16 @@ export default function AdminRoute() {
     const accessToken = sessionData.session?.access_token
     if (!accessToken) throw new Error('A sessão expirou. Entre novamente.')
 
+    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+    const storagePath = `documents/${crypto.randomUUID()}-${safeName}`
+    const { error: storageError } = await supabase.storage
+      .from('ispotec-documents')
+      .upload(storagePath, file, { contentType: file.type || 'application/octet-stream', upsert: false })
+    if (storageError) throw new Error(`Não foi possível guardar o ficheiro: ${storageError.message}`)
+
     const formData = new FormData()
-    formData.append('file', file)
+    formData.append('storagePath', storagePath)
+    formData.append('fileName', file.name)
     formData.append('title', title)
     formData.append('category', category)
 
@@ -81,6 +89,9 @@ export default function AdminRoute() {
       headers: { Authorization: `Bearer ${accessToken}` },
       body: formData,
     })
+    if (!response.ok) {
+      await supabase.storage.from('ispotec-documents').remove([storagePath])
+    }
     const result = await response.json().catch(() => null)
     if (!response.ok) {
       if (response.status === 413) throw new Error(result?.error || 'O servidor recusou este ficheiro por ser demasiado grande. Tente novamente ou use um formato de texto.')
