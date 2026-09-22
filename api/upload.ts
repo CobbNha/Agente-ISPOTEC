@@ -18,7 +18,7 @@ export default async function handler(request: Request): Promise<Response> {
   const title = String(form.get('title') || '').trim()
   const category = String(form.get('category') || 'Geral').trim()
   if (!(file instanceof File) || !title) return Response.json({ error: 'Título e ficheiro são obrigatórios.' }, { status: 400 })
-  if (file.size > 10 * 1024 * 1024) return Response.json({ error: 'O ficheiro excede o limite de 10MB.' }, { status: 400 })
+  if (file.size > 100 * 1024 * 1024) return Response.json({ error: 'O ficheiro excede o limite de 100MB.' }, { status: 413 })
 
   const authorization = request.headers.get('authorization')
   if (!authorization?.startsWith('Bearer ')) return Response.json({ error: 'Sessão necessária.' }, { status: 401 })

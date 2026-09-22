@@ -25,8 +25,8 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
         setFile(null)
         return
       }
-      if (selectedFile.size > 10 * 1024 * 1024) {
-        setError('Ficheiro muito grande (máximo 10MB)')
+      if (selectedFile.size > 100 * 1024 * 1024) {
+        setError('Ficheiro muito grande (máximo 100MB)')
         setFile(null)
         return
       }
@@ -119,7 +119,7 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
               <div>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#065f46' }}>{file.name}</div>
                 <div style={{ fontSize: 12, color: '#10b981' }}>
-                  {(file.size / 1024).toFixed(1)} KB
+                  {file.size >= 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(1)} MB` : `${(file.size / 1024).toFixed(1)} KB`}
                 </div>
               </div>
               <button
@@ -137,7 +137,7 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
             <div style={styles.uploadPrompt}>
               <Upload size={24} color="#94a3b8" />
               <div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>Arraste o ficheiro aqui</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>PDF, Word (.doc/.docx), TXT, MD ou CSV até 10MB</div>
+              <div style={{ fontSize: 12, color: '#64748b' }}>PDF, Word (.doc/.docx), TXT, MD ou CSV até 100MB</div>
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
