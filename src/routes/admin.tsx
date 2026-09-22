@@ -83,7 +83,7 @@ export default function AdminRoute() {
     })
     const result = await response.json().catch(() => null)
     if (!response.ok) {
-      if (response.status === 413) throw new Error(result?.error || 'O ficheiro excede o limite de 100MB.')
+      if (response.status === 413) throw new Error(result?.error || 'O servidor recusou este ficheiro por ser demasiado grande. Tente novamente ou use um formato de texto.')
       throw new Error(result?.error || 'Erro no upload')
     }
 
