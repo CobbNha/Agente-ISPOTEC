@@ -1,3 +1,5 @@
+import { LOCAL_ISPOTEC_KNOWLEDGE, findLocalAnswer } from '../src/lib/knowledge/local'
+
 type ChatRequest = {
   question?: string
   profile?: string
@@ -21,9 +23,14 @@ export default async function handler(request: Request): Promise<Response> {
     return Response.json({ error: 'A pergunta é obrigatória e deve ter até 2000 caracteres.' }, { status: 400 })
   }
 
+  const localAnswer = findLocalAnswer(question)
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return Response.json({ error: 'A integração com a Groq ainda não está configurada.' }, { status: 503 })
+    return Response.json({
+      answer: localAnswer || 'Não encontrei essa informação na base local oficial do ISPOTEC. Confirme com a Secretaria Académica.',
+      offline: true,
+      citations: ['Base local oficial ISPOTEC'],
+    })
   }
 
   const context = await loadKnowledge(question)
@@ -49,21 +56,25 @@ export default async function handler(request: Request): Promise<Response> {
 
   const result = (await response.json().catch(() => null)) as GroqResponse | null
   if (!response.ok) {
-    return Response.json({ error: result?.error?.message || 'Não foi possível obter resposta da Groq.' }, { status: 502 })
+    return Response.json({
+      answer: localAnswer || 'O serviço inteligente está temporariamente indisponível. Não encontrei uma resposta segura na base local. Confirme com a Secretaria Académica.',
+      offline: true,
+      citations: ['Base local oficial ISPOTEC'],
+    })
   }
 
   const answer = result?.choices?.[0]?.message?.content?.trim()
   if (!answer) {
-    return Response.json({ error: 'A Groq devolveu uma resposta vazia.' }, { status: 502 })
+    return Response.json({ answer: localAnswer || 'Não encontrei essa informação na base oficial do ISPOTEC. Confirme com a Secretaria Académica.', offline: true })
   }
 
-  return Response.json({ answer })
+  return Response.json({ answer, citations: ['Base oficial ISPOTEC'] })
 }
 
 async function loadKnowledge(question: string) {
   const url = process.env.SUPABASE_URL
   const key = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return 'Base de conhecimento indisponível.'
+  if (!url || !key) return LOCAL_ISPOTEC_KNOWLEDGE
 
   const supabase = (await import('@supabase/supabase-js')).createClient(url, key)
   const { data } = await supabase
@@ -81,8 +92,8 @@ async function loadKnowledge(question: string) {
   }).filter((part: any) => part.score > 0).sort((a: any, b: any) => b.score - a.score).slice(0, 8)
 
   return ranked.length
-    ? ranked.map((part: any, index: number) => `[${index + 1}] ${part.documentos.titulo}\n${part.conteudo}`).join('\n\n')
-    : 'Nenhum trecho relevante encontrado.'
+    ? `${ranked.map((part: any, index: number) => `[${index + 1}] ${part.documentos.titulo}\n${part.conteudo}`).join('\n\n')}\n\n[BASE LOCAL ISPOTEC]\n${LOCAL_ISPOTEC_KNOWLEDGE}`
+    : LOCAL_ISPOTEC_KNOWLEDGE
 }
 
 export const config = { runtime: 'edge' }
