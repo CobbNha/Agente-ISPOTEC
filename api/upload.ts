@@ -14,10 +14,14 @@ export default async function handler(request: Request): Promise<Response> {
 
   try {
     const form = await request.formData()
-  const file = form.get('file')
+  const uploadedFile = form.get('file')
   const title = String(form.get('title') || '').trim()
   const category = String(form.get('category') || 'Geral').trim()
-  if (!(file instanceof File) || !title) return Response.json({ error: 'Título e ficheiro são obrigatórios.' }, { status: 400 })
+  const storagePathInput = String(form.get('storagePath') || '').trim()
+  const originalName = String(form.get('fileName') || (uploadedFile instanceof File ? uploadedFile.name : '')).trim()
+  if (!(uploadedFile instanceof File) && !storagePathInput) return Response.json({ error: 'Título e ficheiro são obrigatórios.' }, { status: 400 })
+  if (!title) return Response.json({ error: 'O título é obrigatório.' }, { status: 400 })
+  if (storagePathInput && !/^documents\/[a-zA-Z0-9._/-]+$/.test(storagePathInput)) return Response.json({ error: 'Localização de ficheiro inválida.' }, { status: 400 })
   const authorization = request.headers.get('authorization')
   if (!authorization?.startsWith('Bearer ')) return Response.json({ error: 'Sessão necessária.' }, { status: 401 })
 
@@ -43,8 +47,21 @@ export default async function handler(request: Request): Promise<Response> {
   if (!role) return Response.json({ error: 'Apenas administradores podem carregar documentos.' }, { status: 403 })
 
   let text = ''
-  const fileName = file.name.toLowerCase()
-  const fileBytes = Buffer.from(await file.arrayBuffer())
+  let fileName = originalName.toLowerCase()
+  let fileBytes: Buffer
+
+  if (storagePathInput) {
+    const { data: storedFile, error: downloadError } = await supabase.storage
+      .from('ispotec-documents')
+      .download(storagePathInput)
+    if (downloadError || !storedFile) {
+      return Response.json({ error: `Não foi possível ler o ficheiro armazenado: ${downloadError?.message || 'ficheiro não encontrado'}` }, { status: 400 })
+    }
+    fileBytes = Buffer.from(await storedFile.arrayBuffer())
+  } else {
+    fileBytes = Buffer.from(await (uploadedFile as File).arrayBuffer())
+  }
+  if (!fileName) fileName = 'documento.txt'
 
   if (file.type === 'application/pdf' || fileName.endsWith('.pdf')) {
     const parser = new PDFParse({ data: fileBytes })
@@ -94,7 +111,7 @@ export default async function handler(request: Request): Promise<Response> {
     origem: file.name,
     acesso: 'public',
     status: 'processing',
-    storage_path: `documents/${Date.now()}-${file.name}`,
+    storage_path: storagePathInput || `documents/${Date.now()}-${fileName}`,
     created_by: userData.user.id,
   }).select('id').single()
   if (error || !doc) return Response.json({ error: `Não foi possível criar o documento: ${error?.message || 'erro desconhecido'}` }, { status: 500 })
