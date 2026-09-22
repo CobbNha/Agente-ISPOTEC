@@ -10,6 +10,7 @@ interface DocumentUploadProps {
 export function DocumentUpload({ onUpload, categories, loading = false }: DocumentUploadProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [file, setFile] = React.useState<File | null>(null)
+  const [pastedText, setPastedText] = React.useState('')
   const [title, setTitle] = React.useState('')
   const [category, setCategory] = React.useState(categories[0] || '')
   const [status, setStatus] = React.useState<'idle' | 'uploading' | 'success' | 'error'>('idle')
@@ -33,17 +34,21 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!file || !title.trim()) {
-      setError('Preencha o título e selecione um ficheiro')
+    const contentFile = file ?? (pastedText.trim()
+      ? new File([pastedText], `${title.trim() || 'conhecimento'}.txt`, { type: 'text/plain' })
+      : null)
+    if (!contentFile || !title.trim()) {
+      setError('Preencha o título e carregue um ficheiro ou cole o texto')
       return
     }
 
     try {
       setStatus('uploading')
       setError('')
-      await onUpload(file, title, category)
+      await onUpload(contentFile, title, category)
       setStatus('success')
       setFile(null)
+      setPastedText('')
       setTitle('')
       setCategory(categories[0] || '')
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -78,7 +83,20 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
       </div>
 
       <div style={styles.section}>
-        <label style={styles.label}>Ficheiro (PDF, Word ou texto)</label>
+        <label style={styles.label}>Colar texto directamente</label>
+        <textarea
+          value={pastedText}
+          onChange={(e) => { setPastedText(e.target.value); if (e.target.value) { setFile(null); setError('') } }}
+          placeholder="Cole aqui regulamentos, avisos, cursos ou qualquer informação institucional..."
+          rows={7}
+          style={styles.textarea}
+          disabled={loading}
+        />
+        <span style={styles.helpText}>Pode colar texto sem fazer upload de ficheiro. O conteúdo será guardado como conhecimento do agente.</span>
+      </div>
+
+      <div style={styles.section}>
+        <label style={styles.label}>Ou carregar ficheiro (PDF, Word ou texto)</label>
         <div
           style={{
             ...styles.dropZone,
@@ -155,11 +173,11 @@ export function DocumentUpload({ onUpload, categories, loading = false }: Docume
 
       <button
         type="submit"
-        disabled={!file || !title.trim() || loading || status === 'success'}
+        disabled={(!file && !pastedText.trim()) || !title.trim() || loading || status === 'success'}
         style={{
           ...styles.submitBtn,
-          opacity: !file || !title.trim() || loading ? 0.5 : 1,
-          cursor: !file || !title.trim() || loading ? 'not-allowed' : 'pointer',
+          opacity: (!file && !pastedText.trim()) || !title.trim() || loading ? 0.5 : 1,
+          cursor: (!file && !pastedText.trim()) || !title.trim() || loading ? 'not-allowed' : 'pointer',
         }}
       >
         {status === 'uploading' && <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />}
@@ -206,6 +224,24 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#1e293b',
     outline: 'none',
     transition: 'border-color 0.2s',
+  },
+  textarea: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '12px 14px',
+    border: '1px solid #cbd5e1',
+    borderRadius: 8,
+    fontSize: 14,
+    lineHeight: 1.5,
+    fontFamily: 'inherit',
+    color: '#1e293b',
+    outline: 'none',
+    resize: 'vertical',
+    minHeight: 140,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#64748b',
   },
   select: {
     padding: '10px 14px',
