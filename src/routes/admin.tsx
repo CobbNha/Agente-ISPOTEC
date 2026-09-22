@@ -82,7 +82,10 @@ export default function AdminRoute() {
       body: formData,
     })
     const result = await response.json().catch(() => null)
-    if (!response.ok) throw new Error(result?.error || 'Erro no upload')
+    if (!response.ok) {
+      if (response.status === 413) throw new Error(result?.error || 'O ficheiro excede o limite de 100MB.')
+      throw new Error(result?.error || 'Erro no upload')
+    }
 
     await loadData()
   }
